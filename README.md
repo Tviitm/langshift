@@ -3,11 +3,13 @@
 AI LangShift is an open source Chrome extension that instantly translates user-selected text on any webpage using the DeepSeek API. With a simple keyboard shortcut, the extension retrieves the selected text, sends it for translation, and replaces it directly on the page. Identical translations are cached locally for 24 hours, so repeated translations do not make another API request or consume tokens.
 
 ## Features
-- **Instant Translation:** Translate selected text with a single keyboard shortcut.
+- **Selected-Text Translation:** Only selected text is sent for translation and replaced in place.
+- **Keyboard and Menu Triggers:** Use `Ctrl+Shift+Y`, click the extension icon, or right-click selected text and choose **Translate selected text**.
 - **DeepSeek Support:** Uses DeepSeek's OpenAI-compatible Chat Completions API with the `deepseek-v4-flash` model.
 - **Local Translation Cache:** Repeating the same selected text and target language within 24 hours uses a local cached result instead of an API request.
 - **Customizable Settings:** Configure your DeepSeek API key and preferred target language via the options page.
 - **Wide Compatibility:** Works on standard webpages as well as in input fields and contenteditable elements.
+- **Clear Feedback:** The extension reports missing selections, restricted pages, and translation failures instead of silently doing nothing.
 - **Open Source:** Fully open source and hosted on GitHub, encouraging community contributions.
 
 ![Options Page Screenshot](src/icons/option-shot.png)
@@ -21,7 +23,12 @@ AI LangShift is an open source Chrome extension that instantly translates user-s
 - [License](#license)
 
 ## Installation
-You can install the extension from Chrome Extension marketplace [AI LangShift Chrome Extension](https://chromewebstore.google.com/detail/ai-langshift/bggfoidglkkhaldgnfcafndandalebmi).
+1. Download the latest release ZIP and extract it.
+2. Open `chrome://extensions/` in Chrome or Brave and enable **Developer Mode**.
+3. Click **Load unpacked** and select the extracted folder that directly contains `manifest.json`.
+4. Open the extension's **Details** page, then **Extension options**, and enter your DeepSeek API key.
+
+> Chrome cannot load the ZIP itself as an unpacked extension. Extract it first, then select the folder containing `manifest.json`.
 
 ## Building & Development
 1. **Clone the Repository:**
@@ -64,16 +71,19 @@ Make changes in the `src` folder and re-run the build script to see your updates
     - From the extensions page, click **"Details"** on the AI LangShift extension.
     - Click **"Extension options"** to open the settings page where you can enter your API key and choose your target language.
 3. **Verify Functionality:**
-    - Open any webpage.
+    - Open a normal `http://` or `https://` webpage. Chrome internal pages such as `chrome://extensions/` cannot be translated.
     - Select some text.
-    - Press the configured shortcut (default is `Ctrl+Shift+Y`).
+    - Press the configured shortcut (default is `Ctrl+Shift+Y`). If Chrome has not assigned it, open `chrome://extensions/shortcuts` and set it manually.
+    - Alternatively, click the extension icon or right-click the selected text and choose **Translate selected text**.
     - The selected text should be replaced with its translated version.
 
 ## Usage
-- **Translate Selected Text:** 
-Simply select text on a webpage and press the shortcut key to have it translated and replaced.
+
+- **Translate Selected Text:** Select text on a normal webpage, then press `Ctrl+Shift+Y`.
+- **Alternative Triggers:** Click the extension icon or use the **Translate selected text** item in the right-click menu.
+- **Manage the Shortcut:** Visit `chrome://extensions/shortcuts` to view or change the assigned key combination.
 - **Configure Settings:**
-Open the extension’s options page to set your OpenAI API key and target language.
+Open the extension’s options page to set your DeepSeek API key and target language.
 
 ## Contributing
 Contributions are welcome! If you have suggestions or improvements, please open an issue or submit a pull request on the GitHub repository.
