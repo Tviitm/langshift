@@ -16,6 +16,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+            id: "translate_selected_text",
+            title: "Translate selected text",
+            contexts: ["selection"],
+        });
+    });
+});
+
 async function translateText(text: string, targetLang: string, provider: string): Promise<string | null> {
     const translator = createTranslator(provider);
     try {
@@ -50,18 +60,30 @@ async function getCachedTranslation(cacheKey: string): Promise<string | null> {
     return cached.translatedText;
 }
 
-chrome.commands.onCommand.addListener(async (command) => {
-    if (command === "translate_selected_text") {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !tab.id) return;
+async function showPageAlert(tabId: number, message: string): Promise<void> {
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            args: [message],
+            func: (alertMessage: string) => alert(alertMessage),
+        });
+    } catch (error) {
+        console.error("Unable to show translation message:", error);
+    }
+}
+
+async function translateSelection(tabId: number): Promise<void> {
+    try {
+        await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
+        await chrome.action.setBadgeText({ tabId, text: "..." });
 
         const [{ result: selectedText }] = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
+            target: { tabId },
             func: getSelectedText,
         });
 
         if (!selectedText) {
-            console.warn("No text selected.");
+            await showPageAlert(tabId, "Please select some text before translating.");
             return;
         }
 
@@ -85,19 +107,46 @@ chrome.commands.onCommand.addListener(async (command) => {
         }
 
         if (!translatedText) {
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: () => alert("Translation failed! Please check your API key and settings."),
-            });
+            await showPageAlert(tabId, "Translation failed. Please check your DeepSeek API key and settings.");
             return;
         }
 
         // Replace the text on the page
         await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
+            target: { tabId },
             args: [translatedText],
             func: replaceSelectedText,
         });
+    } catch (error) {
+        console.error("Unable to translate the selected text:", error);
+        await showPageAlert(tabId, "Translation cannot run on this page. Try a normal website tab.");
+    } finally {
+        await chrome.action.setBadgeText({ tabId, text: "" }).catch(() => undefined);
+    }
+}
+
+async function translateActiveTab(): Promise<void> {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+        await translateSelection(tab.id);
+    }
+}
+
+chrome.commands.onCommand.addListener((command) => {
+    if (command === "translate_selected_text") {
+        void translateActiveTab();
+    }
+});
+
+chrome.action.onClicked.addListener((tab) => {
+    if (tab.id) {
+        void translateSelection(tab.id);
+    }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "translate_selected_text" && tab?.id) {
+        void translateSelection(tab.id);
     }
 });
   

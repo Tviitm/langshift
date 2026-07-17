@@ -66,7 +66,7 @@ Make changes in the `src` folder and re-run the build script to see your updates
 3. **Verify Functionality:**
     - Open any webpage.
     - Select some text.
-    - Press the configured shortcut (default is `Alt+Shift+T`).
+    - Press the configured shortcut (default is `Ctrl+Shift+Y`).
     - The selected text should be replaced with its translated version.
 
 ## Usage

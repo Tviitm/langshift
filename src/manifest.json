@@ -1,14 +1,22 @@
 {
     "manifest_version": 3,
     "name": "AI LangShift",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "description": "Translate selected text in the page, instantly using DeepSeek.",
     "icons": {
         "16": "icons/icon16.png",
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
     },
-    "permissions": ["storage", "activeTab", "scripting", "alarms"],
+    "permissions": ["storage", "activeTab", "scripting", "alarms", "contextMenus"],
+    "action": {
+      "default_title": "Translate selected text",
+      "default_icon": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+      }
+    },
     "background": {
       "service_worker": "background.js",
       "type": "module"
@@ -16,7 +24,7 @@
     "commands": {
       "translate_selected_text": {
         "suggested_key": {
-          "default": "Alt+Shift+T"
+          "default": "Ctrl+Shift+Y"
         },
         "description": "Translate the selected text"
       }
