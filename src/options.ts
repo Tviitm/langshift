@@ -39,9 +39,9 @@ const languages: { [key: string]: string } = {
     languageSelect.appendChild(option);
   }
   
-  chrome.storage.sync.get(["openai_api_key", "target_lang"], (data) => {
-    if (data.openai_api_key) {
-      (document.getElementById("apiKey") as HTMLInputElement).value = data.openai_api_key;
+  chrome.storage.sync.get(["deepseek_api_key", "target_lang"], (data) => {
+    if (data.deepseek_api_key) {
+      (document.getElementById("apiKey") as HTMLInputElement).value = data.deepseek_api_key;
     }
     if (data.target_lang) {
       languageSelect.value = data.target_lang;
@@ -52,14 +52,13 @@ const languages: { [key: string]: string } = {
     const apiKey = (document.getElementById("apiKey") as HTMLInputElement).value.trim();
     const selectedLanguage = languageSelect.value;
   
-    chrome.storage.sync.set({ openai_api_key: apiKey, target_lang: selectedLanguage }, () => {
+    chrome.storage.sync.set({ deepseek_api_key: apiKey, target_lang: selectedLanguage, ai_provider: "deepseek" }, () => {
       alert("Settings saved!");
     });
   });
   
   document.getElementById("clear")?.addEventListener("click", () => {
-    chrome.storage.sync.remove(["openai_api_key", "target_lang"], () => {
+    chrome.storage.sync.remove(["deepseek_api_key", "target_lang", "ai_provider"], () => {
       alert("Settings cleared.");
     });
   });
-  

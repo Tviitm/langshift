@@ -1,3 +1,4 @@
+import { Constants } from "./constants";
 import { createTranslator } from "./translator";
 
 chrome.alarms.create("keep_alive", { periodInMinutes: 4 });
@@ -25,6 +26,30 @@ async function translateText(text: string, targetLang: string, provider: string)
     }
 }
 
+interface CachedTranslation {
+    translatedText: string;
+    expiresAt: number;
+}
+
+async function getCacheKey(text: string, targetLang: string, provider: string): Promise<string> {
+    const data = new TextEncoder().encode(`${provider}:${targetLang}:${text}`);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    const hashText = Array.from(new Uint8Array(hash)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+    return `${Constants.TRANSLATION_CACHE_PREFIX}${hashText}`;
+}
+
+async function getCachedTranslation(cacheKey: string): Promise<string | null> {
+    const cached = (await chrome.storage.local.get(cacheKey))[cacheKey] as CachedTranslation | undefined;
+    if (!cached) return null;
+
+    if (cached.expiresAt <= Date.now()) {
+        await chrome.storage.local.remove(cacheKey);
+        return null;
+    }
+
+    return cached.translatedText;
+}
+
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === "translate_selected_text") {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -41,11 +66,23 @@ chrome.commands.onCommand.addListener(async (command) => {
         }
 
         // Get settings from storage
-        const { target_lang: targetLang = "en", ai_provider = "openai" } =
+        const { target_lang: targetLang = "en", ai_provider = "deepseek" } =
             await chrome.storage.sync.get(["target_lang", "ai_provider"]);
 
-        // Get the translation
-        const translatedText = await translateText(selectedText, targetLang, ai_provider);
+        const cacheKey = await getCacheKey(selectedText, targetLang, ai_provider);
+        let translatedText = await getCachedTranslation(cacheKey);
+
+        if (!translatedText) {
+            translatedText = await translateText(selectedText, targetLang, ai_provider);
+            if (translatedText) {
+                await chrome.storage.local.set({
+                    [cacheKey]: {
+                        translatedText,
+                        expiresAt: Date.now() + Constants.TRANSLATION_CACHE_TTL_MS,
+                    },
+                });
+            }
+        }
 
         if (!translatedText) {
             await chrome.scripting.executeScript({
@@ -120,4 +157,3 @@ function replaceSelectedText(translatedText: string) {
   }
   
 
-  

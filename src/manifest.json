@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "AI LangShift",
-    "version": "1.0",
+    "version": "1.1",
     "description": "Translate selected text in the page, instantly using OpenAI’s ChatGPT.",
     "icons": {
         "16": "icons/icon16.png",
@@ -21,6 +21,5 @@
       }
     },
     "options_page": "options.html",
-    "host_permissions": ["https://api.openai.com/*"]
+    "host_permissions": ["https://api.deepseek.com/*"]
 }
-  

@@ -1,10 +1,12 @@
 # AI LangShift
 
-AI LangShift is an open source Chrome extension that instantly translates user-selected text on any webpage using the OpenAI API (GPT-4). With a simple keyboard shortcut, the extension retrieves the selected text, sends it for translation, and replaces it directly on the page.
+AI LangShift is an open source Chrome extension that instantly translates user-selected text on any webpage using the DeepSeek API. With a simple keyboard shortcut, the extension retrieves the selected text, sends it for translation, and replaces it directly on the page. Identical translations are cached locally for 24 hours, so repeated translations do not make another API request or consume tokens.
 
 ## Features
 - **Instant Translation:** Translate selected text with a single keyboard shortcut.
-- **Customizable Settings:** Configure your OpenAI API key and preferred target language via the options page.
+- **DeepSeek Support:** Uses DeepSeek's OpenAI-compatible Chat Completions API with the `deepseek-v4-flash` model.
+- **Local Translation Cache:** Repeating the same selected text and target language within 24 hours uses a local cached result instead of an API request.
+- **Customizable Settings:** Configure your DeepSeek API key and preferred target language via the options page.
 - **Wide Compatibility:** Works on standard webpages as well as in input fields and contenteditable elements.
 - **Open Source:** Fully open source and hosted on GitHub, encouraging community contributions.
 
@@ -58,7 +60,7 @@ Make changes in the `src` folder and re-run the build script to see your updates
     - Open Chrome/Brave and navigate to `chrome://extensions/`.
     - Enable **Developer Mode**.
     - Click "Load unpacked" and select the `dist` folder.
-2. **Set your OpenAI API key:**
+2. **Set your DeepSeek API key:**
     - From the extensions page, click **"Details"** on the AI LangShift extension.
     - Click **"Extension options"** to open the settings page where you can enter your API key and choose your target language.
 3. **Verify Functionality:**

@@ -1,6 +1,7 @@
 import { Constants } from './constants';
 
 export const AI_PROVIDERS = {
+    DEEPSEEK: 'deepseek',
     OPENAI: 'openai',
     CLAUDE: 'claude',
     GEMINI: 'gemini'
@@ -8,6 +9,8 @@ export const AI_PROVIDERS = {
 
 export function createTranslator(provider: string): Translator {
     switch (provider.toLowerCase()) {
+        case AI_PROVIDERS.DEEPSEEK:
+            return new DeepSeekTranslator();
         case AI_PROVIDERS.OPENAI:
             return new OpenAITranslator();
         case AI_PROVIDERS.CLAUDE:
@@ -130,6 +133,51 @@ class GeminiTranslator extends Translator {
             return data.candidates?.[0]?.output?.trim() || "⚠️ Translation failed.";
         } catch(error) {
             console.error("Gemini Translation failed:", error);
+            return null;
+        }
+    }
+}
+
+class DeepSeekTranslator extends Translator {
+    async translate(text: string, targetLang: string, model: string): Promise<string | null> {
+        const apiUrl = 'https://api.deepseek.com/chat/completions';
+        const { deepseek_api_key: apiKey } = await chrome.storage.sync.get(Constants.DEEPSEEK_API_KEY);
+
+        if (!apiKey) {
+            console.warn('No DeepSeek API key found.');
+            return null;
+        }
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: model || 'deepseek-v4-flash',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Translate the user's text into ${targetLang}. Return only the translation, with no explanation.`,
+                        },
+                        { role: 'user', content: text },
+                    ],
+                    stream: false,
+                    thinking: { type: 'disabled' },
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                console.error('DeepSeek translation failed:', data);
+                return null;
+            }
+
+            return data.choices?.[0]?.message?.content?.trim() || null;
+        } catch (error) {
+            console.error('DeepSeek translation failed:', error);
             return null;
         }
     }
