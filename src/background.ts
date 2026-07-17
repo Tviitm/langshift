@@ -31,13 +31,30 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-async function translateSegments(segments: string[], targetLang: string, provider: string): Promise<string[] | null> {
-    const translator = createTranslator(provider);
+interface TranslationAttempt {
+    translatedSegments: string[] | null;
+    errorMessage: string | null;
+}
+
+const activeTranslationTabs = new Set<number>();
+const inFlightTranslations = new Map<string, Promise<TranslationAttempt>>();
+
+async function translateSegments(segments: string[], targetLang: string, provider: string): Promise<TranslationAttempt> {
+    let translator: ReturnType<typeof createTranslator> | null = null;
     try {
-        return await translator.translateSegments(segments, targetLang, '');
+        translator = createTranslator(provider);
+        const translatedSegments = await translator.translateSegments(segments, targetLang, '');
+        return {
+            translatedSegments,
+            errorMessage: translatedSegments ? null : translator.getLastError(),
+        };
     } catch (error) {
         console.error(`Translation failed with ${provider}:`, error);
-        return null;
+        return {
+            translatedSegments: null,
+            errorMessage: translator?.getLastError() ||
+                (error instanceof Error ? error.message : `Unexpected ${provider} translation error. Please try again.`),
+        };
     }
 }
 
@@ -77,10 +94,47 @@ async function showPageAlert(tabId: number, message: string): Promise<void> {
     }
 }
 
+async function discardPendingSelection(tabId: number, token: string): Promise<void> {
+    await chrome.scripting.executeScript({
+        target: { tabId },
+        args: [token],
+        func: discardCapturedContent,
+    }).catch(() => undefined);
+}
+
+function getOrStartTranslation(
+    cacheKey: string,
+    segments: string[],
+    targetLang: string,
+    provider: string,
+): Promise<TranslationAttempt> {
+    const existing = inFlightTranslations.get(cacheKey);
+    if (existing) return existing;
+
+    const translation = translateSegments(segments, targetLang, provider);
+    inFlightTranslations.set(cacheKey, translation);
+    const clearInFlight = () => {
+        if (inFlightTranslations.get(cacheKey) === translation) {
+            inFlightTranslations.delete(cacheKey);
+        }
+    };
+    void translation.then(clearInFlight, clearInFlight);
+    return translation;
+}
+
 async function translateSelection(tabId: number): Promise<void> {
+    if (activeTranslationTabs.has(tabId)) {
+        await showPageAlert(tabId, "A translation is already running on this tab.");
+        return;
+    }
+
+    activeTranslationTabs.add(tabId);
+    let capturedToken: string | null = null;
     try {
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
-        await chrome.action.setBadgeText({ tabId, text: "..." });
+        await Promise.all([
+            chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" }),
+            chrome.action.setBadgeText({ tabId, text: "..." }),
+        ]);
 
         const [{ result: selectionPayload }] = await chrome.scripting.executeScript({
             target: { tabId },
@@ -91,34 +145,47 @@ async function translateSelection(tabId: number): Promise<void> {
             await showPageAlert(tabId, "Please select some text before translating.");
             return;
         }
+        capturedToken = selectionPayload.token;
 
         // Get settings from storage
         const { target_lang: targetLang = "en", ai_provider = "deepseek" } =
             await chrome.storage.sync.get(["target_lang", "ai_provider"]);
 
         const cacheKey = await getCacheKey(selectionPayload.segments, targetLang, ai_provider);
-        let translatedSegments = await getCachedTranslation(cacheKey);
+        let translatedSegments: string[] | null = null;
+        let translationError: string | null = null;
+        let shouldCacheTranslation = false;
+
+        try {
+            translatedSegments = await getCachedTranslation(cacheKey);
+        } catch (error) {
+            console.warn("Unable to read the translation cache; continuing without it:", error);
+        }
+
+        if (translatedSegments && translatedSegments.length !== selectionPayload.segments.length) {
+            translatedSegments = null;
+            await chrome.storage.local.remove(cacheKey).catch(() => undefined);
+        }
 
         if (!translatedSegments) {
-            translatedSegments = await translateSegments(selectionPayload.segments, targetLang, ai_provider);
-            if (translatedSegments) {
-                try {
-                    await chrome.storage.local.set({
-                        [cacheKey]: {
-                            translatedSegments,
-                            expiresAt: Date.now() + Constants.TRANSLATION_CACHE_TTL_MS,
-                        },
-                    });
-                } catch (error) {
-                    // Very large translations can exceed local storage quota. The
-                    // translation should still be applied even if it cannot be cached.
-                    console.warn("Unable to cache this translation:", error);
-                }
-            }
+            const attempt = await getOrStartTranslation(
+                cacheKey,
+                selectionPayload.segments,
+                targetLang,
+                ai_provider,
+            );
+            translatedSegments = attempt.translatedSegments;
+            translationError = attempt.errorMessage;
+            shouldCacheTranslation = translatedSegments !== null;
         }
 
         if (!translatedSegments || translatedSegments.length !== selectionPayload.segments.length) {
-            await showPageAlert(tabId, "Translation failed. Please check your DeepSeek API key and settings.");
+            await discardPendingSelection(tabId, selectionPayload.token);
+            capturedToken = null;
+            await showPageAlert(
+                tabId,
+                translationError || "Translation failed because the provider returned incomplete content. Please try a smaller selection.",
+            );
             return;
         }
 
@@ -131,10 +198,28 @@ async function translateSelection(tabId: number): Promise<void> {
         if (!applyResult?.success) {
             await showPageAlert(tabId, applyResult?.message || "The page changed before translation finished. Please select the text again.");
         }
+        capturedToken = null;
+
+        if (shouldCacheTranslation) {
+            try {
+                await chrome.storage.local.set({
+                    [cacheKey]: {
+                        translatedSegments,
+                        expiresAt: Date.now() + Constants.TRANSLATION_CACHE_TTL_MS,
+                    },
+                });
+            } catch (error) {
+                // The page is already translated, so a cache quota problem must not
+                // turn a successful translation into a visible failure.
+                console.warn("Unable to cache this translation:", error);
+            }
+        }
     } catch (error) {
         console.error("Unable to translate the selected text:", error);
-        await showPageAlert(tabId, "Translation cannot run on this page. Try a normal website tab.");
+        if (capturedToken) await discardPendingSelection(tabId, capturedToken);
+        await showPageAlert(tabId, "Translation stopped because the extension or page became unavailable. Reload the page and try again.");
     } finally {
+        activeTranslationTabs.delete(tabId);
         await chrome.action.setBadgeText({ tabId, text: "" }).catch(() => undefined);
     }
 }
@@ -216,7 +301,7 @@ function captureSelectedContent() {
       if (!selectedText.trim()) return null;
 
       const segments: string[] = [];
-      const maxChunkLength = 3000;
+      const maxChunkLength = 1500;
       let cursor = 0;
       while (cursor < selectedText.length) {
         let chunkEnd = Math.min(cursor + maxChunkLength, selectedText.length);
@@ -270,7 +355,7 @@ function captureSelectedContent() {
     }> = [];
 
     const addTextParts = (node: Text, selectionStart: number, selectionEnd: number) => {
-      const maxChunkLength = 3000;
+      const maxChunkLength = 1500;
       let cursor = selectionStart;
 
       while (cursor < selectionEnd) {
@@ -329,6 +414,16 @@ function captureSelectedContent() {
     });
 
     return { token, segments: parts.map((part) => part.originalText) };
+  }
+
+function discardCapturedContent(token: string) {
+    const scope = globalThis as typeof globalThis & {
+      __langshiftPageState?: {
+        pending: Map<string, any>;
+        history: any[];
+      };
+    };
+    scope.__langshiftPageState?.pending.delete(token);
   }
 
 function applyTranslatedSegments(token: string, translatedSegments: string[]) {

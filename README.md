@@ -5,6 +5,10 @@ AI LangShift is an open source Chrome extension that instantly translates user-s
 ## Features
 - **Selected-Text Translation:** Only selected text is sent for translation and replaced in place.
 - **Stable Large-Selection Layout:** Splits large selections at text boundaries, translates the segments together for context, and writes each result back to its exact original DOM text node. Fonts, colors, links, emphasis, paragraphs, lists, and CSS layout stay intact.
+- **Large-Text Recovery:** Uses smaller API batches, limited parallel requests, automatic retries, and recursive splitting when DeepSeek returns an empty, truncated, oversized, or incomplete response.
+- **Faster Response Pipeline:** Combines many small webpage text nodes into fewer requests, processes up to six safe batches concurrently, shares identical in-flight translations across tabs, and updates the page before writing the cache.
+- **Cross-Batch Context:** Supplies a small selected-text context window around each batch to keep terminology, tone, and sentence meaning consistent without changing the page structure.
+- **Actionable Errors:** Reports authentication, balance, model, rate-limit, server, network, timeout, and response-format problems separately instead of always blaming the API key.
 - **Undo Translation:** Right-click anywhere on the same page and choose **Undo last translation** to restore the most recently translated selection. Undo is cancelled if the page content was edited afterward, protecting newer changes.
 - **Keyboard and Menu Triggers:** Use `Ctrl+Shift+Y`, click the extension icon, or right-click selected text and choose **Translate selected text**.
 - **DeepSeek Support:** Uses DeepSeek's OpenAI-compatible Chat Completions API with the `deepseek-v4-flash` model.
