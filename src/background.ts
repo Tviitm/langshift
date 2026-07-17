@@ -1,5 +1,5 @@
-import { Constants } from "./constants";
-import { createTranslator } from "./translator";
+import { Constants } from "./constants.js";
+import { createTranslator } from "./translator.js";
 
 chrome.alarms.create("keep_alive", { periodInMinutes: 4 });
 

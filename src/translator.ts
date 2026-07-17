@@ -1,4 +1,4 @@
-import { Constants } from './constants';
+import { Constants } from './constants.js';
 
 export const AI_PROVIDERS = {
     DEEPSEEK: 'deepseek',
