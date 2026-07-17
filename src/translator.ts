@@ -26,6 +26,16 @@ class Translator {
     async translate(text: string, targetLang: string, model: string): Promise<string | null> {
         throw new Error('AI Translate provider not supported.');
     }
+
+    async translateSegments(segments: string[], targetLang: string, model: string): Promise<string[] | null> {
+        const translatedSegments: string[] = [];
+        for (const segment of segments) {
+            const translated = await this.translate(segment, targetLang, model);
+            if (translated === null) return null;
+            translatedSegments.push(translated);
+        }
+        return translatedSegments;
+    }
 }
 
 class OpenAITranslator extends Translator {
@@ -140,6 +150,11 @@ class GeminiTranslator extends Translator {
 
 class DeepSeekTranslator extends Translator {
     async translate(text: string, targetLang: string, model: string): Promise<string | null> {
+        const result = await this.translateSegments([text], targetLang, model);
+        return result?.[0] ?? null;
+    }
+
+    async translateSegments(segments: string[], targetLang: string, model: string): Promise<string[] | null> {
         const apiUrl = 'https://api.deepseek.com/chat/completions';
         const { deepseek_api_key: apiKey } = await chrome.storage.sync.get(Constants.DEEPSEEK_API_KEY);
 
@@ -149,33 +164,108 @@ class DeepSeekTranslator extends Translator {
         }
 
         try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                    model: model || 'deepseek-v4-flash',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `Translate the user's text into ${targetLang}. Preserve the original line breaks, paragraph boundaries, bullets, numbering, and text-only layout. Return only the translation, with no explanation and no added Markdown or HTML.`,
-                        },
-                        { role: 'user', content: text },
-                    ],
-                    stream: false,
-                    thinking: { type: 'disabled' },
-                }),
+            const preparedSegments = segments.map((segment) => {
+                const leadingWhitespace = segment.match(/^\s*/)?.[0] || '';
+                const trailingWhitespace = segment.match(/\s*$/)?.[0] || '';
+                const coreEnd = segment.length - trailingWhitespace.length;
+                return {
+                    original: segment,
+                    leadingWhitespace,
+                    trailingWhitespace,
+                    core: segment.slice(leadingWhitespace.length, Math.max(leadingWhitespace.length, coreEnd)),
+                };
+            });
+            const results = new Array<string>(segments.length);
+            const translatableIndexes = preparedSegments
+                .map((segment, index) => segment.core ? index : -1)
+                .filter((index) => index >= 0);
+
+            preparedSegments.forEach((segment, index) => {
+                if (!segment.core) results[index] = segment.original;
             });
 
-            const data = await response.json();
-            if (!response.ok) {
-                console.error('DeepSeek translation failed:', data);
-                return null;
+            const batches: number[][] = [];
+            let currentBatch: number[] = [];
+            let currentLength = 0;
+
+            for (const index of translatableIndexes) {
+                const segmentLength = preparedSegments[index].core.length;
+                if (currentBatch.length > 0 && (currentBatch.length >= 50 || currentLength + segmentLength > 6000)) {
+                    batches.push(currentBatch);
+                    currentBatch = [];
+                    currentLength = 0;
+                }
+                currentBatch.push(index);
+                currentLength += segmentLength;
+            }
+            if (currentBatch.length > 0) batches.push(currentBatch);
+
+            for (const batchIndexes of batches) {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify({
+                        model: model || 'deepseek-v4-flash',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `Translate every string in the JSON segments array into ${targetLang}. Use neighboring segments for context, but keep the same number and order of items. Return valid JSON exactly in this form: {"translations":["translated segment 1","translated segment 2"]}. Do not return Markdown, HTML, explanations, or extra keys.`,
+                            },
+                            {
+                                role: 'user',
+                                content: JSON.stringify({
+                                    segments: batchIndexes.map((index) => preparedSegments[index].core),
+                                }),
+                            },
+                        ],
+                        response_format: { type: 'json_object' },
+                        stream: false,
+                        thinking: { type: 'disabled' },
+                        max_tokens: 8192,
+                    }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    console.error('DeepSeek translation failed:', data);
+                    return null;
+                }
+
+                const content = data.choices?.[0]?.message?.content;
+                if (typeof content !== 'string' || !content.trim()) {
+                    console.error('DeepSeek returned an empty JSON response.');
+                    return null;
+                }
+
+                let parsed: unknown;
+                try {
+                    parsed = JSON.parse(content);
+                } catch (error) {
+                    console.error('DeepSeek returned invalid JSON:', error, content);
+                    return null;
+                }
+
+                const translations = (parsed as { translations?: unknown }).translations;
+                if (!Array.isArray(translations) ||
+                    translations.length !== batchIndexes.length ||
+                    translations.some((translation) => typeof translation !== 'string')) {
+                    console.error('DeepSeek returned a translation array that does not match the requested segments:', parsed);
+                    return null;
+                }
+
+                batchIndexes.forEach((index, batchIndex) => {
+                    const prepared = preparedSegments[index];
+                    results[index] =
+                        prepared.leadingWhitespace +
+                        (translations[batchIndex] as string).trim() +
+                        prepared.trailingWhitespace;
+                });
             }
 
-            return data.choices?.[0]?.message?.content?.trim() || null;
+            return results.every((result) => typeof result === 'string') ? results : null;
         } catch (error) {
             console.error('DeepSeek translation failed:', error);
             return null;

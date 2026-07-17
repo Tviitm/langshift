@@ -4,7 +4,8 @@ AI LangShift is an open source Chrome extension that instantly translates user-s
 
 ## Features
 - **Selected-Text Translation:** Only selected text is sent for translation and replaced in place.
-- **Original Formatting Preservation:** Replaces text inside the existing DOM nodes so the webpage keeps its fonts, colors, links, emphasis, paragraphs, lists, and CSS layout.
+- **Stable Large-Selection Layout:** Splits large selections at text boundaries, translates the segments together for context, and writes each result back to its exact original DOM text node. Fonts, colors, links, emphasis, paragraphs, lists, and CSS layout stay intact.
+- **Undo Translation:** Right-click anywhere on the same page and choose **Undo last translation** to restore the most recently translated selection. Undo is cancelled if the page content was edited afterward, protecting newer changes.
 - **Keyboard and Menu Triggers:** Use `Ctrl+Shift+Y`, click the extension icon, or right-click selected text and choose **Translate selected text**.
 - **DeepSeek Support:** Uses DeepSeek's OpenAI-compatible Chat Completions API with the `deepseek-v4-flash` model.
 - **Local Translation Cache:** Repeating the same selected text and target language within 24 hours uses a local cached result instead of an API request.
@@ -34,7 +35,7 @@ AI LangShift is an open source Chrome extension that instantly translates user-s
 ## Building & Development
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/imaun/langshift.git
+   git clone https://github.com/Tviitm/langshift.git
    cd langshift
    ```
 2. **Install Dependencies:**
@@ -77,11 +78,13 @@ Make changes in the `src` folder and re-run the build script to see your updates
     - Press the configured shortcut (default is `Ctrl+Shift+Y`). If Chrome has not assigned it, open `chrome://extensions/shortcuts` and set it manually.
     - Alternatively, click the extension icon or right-click the selected text and choose **Translate selected text**.
     - The selected text should be replaced with its translated version.
+    - To restore it, right-click the page and choose **Undo last translation**.
 
 ## Usage
 
 - **Translate Selected Text:** Select text on a normal webpage, then press `Ctrl+Shift+Y`.
 - **Alternative Triggers:** Click the extension icon or use the **Translate selected text** item in the right-click menu.
+- **Undo the Last Translation:** Right-click the same page and choose **Undo last translation**. Up to 20 recent translations are kept per page until that page is reloaded or closed.
 - **Manage the Shortcut:** Visit `chrome://extensions/shortcuts` to view or change the assigned key combination.
 - **Configure Settings:**
 Open the extension’s options page to set your DeepSeek API key and target language.
