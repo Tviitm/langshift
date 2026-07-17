@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "AI LangShift",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "description": "Translate selected text in the page, instantly using DeepSeek.",
     "icons": {
         "16": "icons/icon16.png",

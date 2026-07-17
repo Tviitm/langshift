@@ -160,7 +160,7 @@ class DeepSeekTranslator extends Translator {
                     messages: [
                         {
                             role: 'system',
-                            content: `Translate the user's text into ${targetLang}. Return only the translation, with no explanation.`,
+                            content: `Translate the user's text into ${targetLang}. Preserve the original line breaks, paragraph boundaries, bullets, numbering, and text-only layout. Return only the translation, with no explanation and no added Markdown or HTML.`,
                         },
                         { role: 'user', content: text },
                     ],

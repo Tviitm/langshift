@@ -77,12 +77,13 @@ async function translateSelection(tabId: number): Promise<void> {
         await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
         await chrome.action.setBadgeText({ tabId, text: "..." });
 
-        const [{ result: selectedText }] = await chrome.scripting.executeScript({
+        const [{ result: selectedTextResult }] = await chrome.scripting.executeScript({
             target: { tabId },
             func: getSelectedText,
         });
+        const selectedText = selectedTextResult || "";
 
-        if (!selectedText) {
+        if (!selectedText.trim()) {
             await showPageAlert(tabId, "Please select some text before translating.");
             return;
         }
@@ -158,15 +159,10 @@ function getSelectedText() {
         return input.value.substring(input.selectionStart, input.selectionEnd);
       }
     } else {
-      return window.getSelection()?.toString().trim();
+      return window.getSelection()?.toString() || "";
     }
     return "";
   }  
-  
-function triggerInputEvent(element: HTMLElement) {
-    const event = new Event('input', { bubbles: true });
-    element.dispatchEvent(event);
-  }
   
 function replaceSelectedText(translatedText: string) {
     const active = document.activeElement;
@@ -178,30 +174,87 @@ function replaceSelectedText(translatedText: string) {
         const end = input.selectionEnd;
         input.value = input.value.substring(0, start) + translatedText + input.value.substring(end);
         input.selectionStart = input.selectionEnd = start + translatedText.length;
-        triggerInputEvent(input);
-      }
-    } else if (active && active instanceof HTMLElement && active.isContentEditable) {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        const textNode = document.createTextNode(translatedText);
-        range.insertNode(textNode);
-
-        range.setStartAfter(textNode);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        
-        active.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     } else {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        range.insertNode(document.createTextNode(translatedText));
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+
+      const range = selection.getRangeAt(0);
+      const commonAncestor = range.commonAncestorContainer;
+      const root = commonAncestor.nodeType === Node.TEXT_NODE
+        ? commonAncestor.parentNode
+        : commonAncestor;
+
+      if (!root) return;
+
+      const selectedParts: Array<{
+        node: Text;
+        start: number;
+        end: number;
+        originalLength: number;
+        replacement: string;
+      }> = [];
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let currentNode = walker.nextNode();
+
+      while (currentNode) {
+        const textNode = currentNode as Text;
+        if (range.intersectsNode(textNode)) {
+          const start = textNode === range.startContainer ? range.startOffset : 0;
+          const end = textNode === range.endContainer ? range.endOffset : textNode.data.length;
+
+          if (end > start) {
+            selectedParts.push({
+              node: textNode,
+              start,
+              end,
+              originalLength: end - start,
+              replacement: "",
+            });
+          }
+        }
+        currentNode = walker.nextNode();
       }
+
+      if (selectedParts.length === 0) return;
+
+      const totalOriginalLength = selectedParts.reduce(
+        (total, part) => total + part.originalLength,
+        0,
+      );
+      let originalProgress = 0;
+      let translatedProgress = 0;
+
+      selectedParts.forEach((part, index) => {
+        originalProgress += part.originalLength;
+        const translatedEnd = index === selectedParts.length - 1
+          ? translatedText.length
+          : Math.round(translatedText.length * originalProgress / totalOriginalLength);
+        part.replacement = translatedText.slice(translatedProgress, translatedEnd);
+        translatedProgress = translatedEnd;
+      });
+
+      selectedParts.forEach((part) => {
+        part.node.data =
+          part.node.data.slice(0, part.start) +
+          part.replacement +
+          part.node.data.slice(part.end);
+      });
+
+      const lastPart = selectedParts[selectedParts.length - 1];
+      const finalRange = document.createRange();
+      finalRange.setStart(lastPart.node, lastPart.start + lastPart.replacement.length);
+      finalRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(finalRange);
+
+      const parentElement = commonAncestor.nodeType === Node.ELEMENT_NODE
+        ? commonAncestor as Element
+        : commonAncestor.parentElement;
+      const editable = parentElement?.closest('[contenteditable="true"]');
+      editable?.dispatchEvent(new Event('input', { bubbles: true }));
     }
   }
   
